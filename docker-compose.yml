@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+    environment:
+      - DEBUG=1
+      - DJANGO_SECRET_KEY=django-insecure-3d1-laz!pqt9zpwlzc7n*b_ujyz1my$1ueh$j3b0mzg6m@=*5c
+      - DATABASE_URL=postgres://postgres:software@db:5432/social_networking_local
+
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: social_networking_local
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: software
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+
+volumes:
+  postgres_data:
