@@ -27,6 +27,7 @@
    ```
 
 4. **Configure Environment Variables:**
+   - I have not created the `.env`, but we should create .env for best pratice.
    - Create a `.env` file in the project root directory and define necessary variables like database credentials, secret key, etc.
 
 ### APIs

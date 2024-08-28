@@ -12,6 +12,9 @@ from datetime import timedelta
 from rest_framework.views import APIView
 from ...custom_response import CustomResponseMixin, APIException
 from django.db import transaction
+import logging
+from ...utils import *
+logger = logging.getLogger(__name__)
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -39,7 +42,6 @@ class UserSearchView(generics.ListAPIView):
             }
         }
     """
-
     queryset = User.objects.all()
     serializer_class = UserSerializer
     pagination_class = StandardResultsSetPagination
@@ -62,7 +64,8 @@ class UserSearchView(generics.ListAPIView):
             page = self.paginate_queryset(queryset)
             if page is not None:
                 serializer = self.get_serializer(page, many=True)
-                paginated_response = self.get_paginated_response(serializer.data).data
+                paginated_response = self.get_paginated_response(
+                    serializer.data).data
                 return Response(
                     {
                         "message": "User Fetched Successfully",
@@ -76,11 +79,14 @@ class UserSearchView(generics.ListAPIView):
                     status=status.HTTP_200_OK,
                 )
             serializer = self.get_serializer(queryset, many=True)
+            logger.info(f"User search successful for keyword " \
+                "{request.query_params.get('search')}' by user '{request.user.email}'")
             return Response(
                 {"message": "User Fetched Successfully", "data": serializer.data},
                 status=status.HTTP_200_OK,
             )
         except Exception as e:
+            logger.error(f"Error during user search: {str(e)}")
             return Response(
                 {"message": "An unexpected error occurred", "error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -109,28 +115,11 @@ class FriendRequestView(CustomResponseMixin, APIView):
 
         sender = request.user
         receiver_id = request.data.get("receiver_id")
-        if not receiver_id:
-            raise APIException(
-                message=failure_message, errors="Receiver ID is required"
-            )
 
-        receiver = User.objects.get(id=receiver_id)
-        if sender == receiver:
-            raise APIException(
-                message=failure_message,
-                errors="You cannot send a friend request to yourself!",
-            )
-
-        # Check if more than 3 friend requests were sent in the last minute
-        one_minute_ago = timezone.now() - timedelta(minutes=1)
-        recent_requests = FriendRequest.objects.filter(
-            sender=sender, created_at__gte=one_minute_ago
-        ).count()
-        if recent_requests >= 3:
-            raise APIException(
-                message=failure_message,
-                errors="Cannot send more than 3 friend requests within a minute",
-            )
+        # validations
+        validate_receiver_id(receiver_id, failure_message)
+        check_recent_requests(sender, failure_message)
+        receiver = get_receiver(receiver_id, sender, failure_message)
 
         try:
             with transaction.atomic():
@@ -140,10 +129,12 @@ class FriendRequestView(CustomResponseMixin, APIView):
                 )
                 if not created:
                     raise APIException(
-                        message=failure_message, errors="Friend request already sent"
+                        message=failure_message,
+                        errors="Friend request already sent"
                     )
                 return self.format_response(
-                    message="Friend request sent", status_code=status.HTTP_201_CREATED
+                    message="Friend request sent",
+                    status_code=status.HTTP_201_CREATED
                 )
         except APIException as e:
             transaction.set_rollback(True)
@@ -153,29 +144,26 @@ class FriendRequestView(CustomResponseMixin, APIView):
             raise APIException(message="An unexpected error occurred", errors=str(e))
 
 
-
     def put(self, request, pk):
         failure_message = "Failed to accept/reject friend request"
-        friend_request = FriendRequest.objects.get(pk=pk)
-        if friend_request.receiver != request.user:
-            raise APIException(
-                message=failure_message,
-                errors="You are not authorized to accept/reject this request",
-            )
-        request_status = request.data.get("status")
-        if request_status not in ["accepted", "rejected"]:
-            raise APIException(message=failure_message, errors="Invalid Status")
+
+        friend_request = get_friend_request(
+            pk,
+            request.user,
+            failure_message
+        )
+        request_status = validate_request_status(
+            request.data.get("status"),
+            failure_message)
+
         try:
             with transaction.atomic():
-                # Update friend request status
-                friend_request.status = request_status
-                friend_request.save()
+                update_friend_request_status(friend_request, request_status)
 
-                # Create friendship if status is 'accepted'
                 if request_status == "accepted":
-                    Friendship.objects.create(
-                        user1=friend_request.sender, user2=friend_request.receiver
-                    )
+                    create_friendship(
+                        friend_request.sender, friend_request.receiver)
+
                 return self.format_response(
                     message=f"Friend request {request_status}",
                     status_code=status.HTTP_200_OK,
@@ -185,40 +173,6 @@ class FriendRequestView(CustomResponseMixin, APIView):
             raise e
         except Exception as e:
             transaction.set_rollback(True)
-            raise APIException(message="An unexpected error occurred", errors=str(e))
-
-
-class PendingFriendRequestView(CustomResponseMixin, APIView):
-    """
-    API endpoint to fetch pending friend requests.
-    """
-
-    permission_classes = [IsAuthenticated]
-    pagination_class = StandardResultsSetPagination
-
-    def get(self, request):
-        try:
-            user = self.request.user
-            friend_requests_obj = (
-                FriendRequest.objects.select_related("sender")
-                .filter(receiver=user, status="pending")
-                .values("id", "sender__name", "sender__email")
-            )
-            sender_details = []
-            for item in friend_requests_obj:
-                sender_data = {
-                    "friend_request_id": item["id"],
-                    "name": item["sender__name"],
-                    "email": item["sender__email"],
-                }
-                sender_details.append(sender_data)
-            return self.format_response(
-                message="Pending friend requests fetched successfully",
-                data=sender_details,
-                type="success",
-                status_code=status.HTTP_200_OK,
-            )
-        except Exception as e:
             raise APIException(message="An unexpected error occurred", errors=str(e))
 
 
@@ -265,6 +219,7 @@ class FriendListView(generics.ListAPIView):
                 status=status.HTTP_200_OK,
             )
         except Exception as e:
+            logger.error(f"Error fetching user friends list: {str(e)}")
             return Response(
                 {"message": "An unexpected error occurred", "error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
