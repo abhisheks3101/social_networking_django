@@ -66,14 +66,13 @@ def custom_exception_handler(exc, context):
     Custom exception for 401 error when token gets expired
     """
     response = exception_handler(exc, context)
-
-    if response is not None:
-        if response.status_code == 401:  
-            return Response({
-                'message': 'Unauthorized',
-                'data': {},
-                'type': 'failure',
-                'errors': {
-                    'detail': 'Token Expired or Invalid'
-                }
-            }, status=status.HTTP_401_UNAUTHORIZED)
+    if response is not None and response.status_code == 401:
+        return Response({
+            'message': 'Unauthorized',
+            'data': {},
+            'type': 'failure',
+            'errors': {
+                'detail': 'Token Expired or Invalid'
+            }
+        }, status=status.HTTP_401_UNAUTHORIZED)
+    return response
