@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from ...models import User
+from ...custom_response import APIException
+
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     # we are writing this because we need confirm password field 

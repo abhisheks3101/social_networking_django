@@ -2,7 +2,7 @@
 from social_networking.app_apis.models import User, FriendRequest, Friendship
 from django.utils import timezone
 from datetime import timedelta
-from custom_response import APIException
+from .custom_response import APIException
 
 
 def validate_receiver_id(receiver_id, failure_message):

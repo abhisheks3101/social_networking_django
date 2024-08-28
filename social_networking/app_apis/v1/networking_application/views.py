@@ -7,8 +7,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from social_networking.app_apis.models import User, FriendRequest, Friendship
-from django.utils import timezone
-from datetime import timedelta
 from rest_framework.views import APIView
 from ...custom_response import CustomResponseMixin, APIException
 from django.db import transaction
@@ -224,3 +222,38 @@ class FriendListView(generics.ListAPIView):
                 {"message": "An unexpected error occurred", "error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class PendingFriendRequestView(CustomResponseMixin, APIView):
+    """
+    API endpoint to fetch pending friend requests.
+    """
+
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get(self, request):
+        try:
+            user = self.request.user
+            friend_requests_obj = (
+                FriendRequest.objects.select_related("sender")
+                .filter(receiver=user, status="pending")
+                .values("id", "sender__name", "sender__email")
+            )
+            sender_details = []
+            for item in friend_requests_obj:
+                sender_data = {
+                    "friend_request_id": item["id"],
+                    "name": item["sender__name"],
+                    "email": item["sender__email"],
+                }
+                sender_details.append(sender_data)
+            return self.format_response(
+                message="Pending friend requests fetched successfully",
+                data=sender_details,
+                type="success",
+                status_code=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.error(f"Error fetching pending friend requests: {str(e)}")
+            raise APIException(message="An unexpected error occurred", errors=str(e))

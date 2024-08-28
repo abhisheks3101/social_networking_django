@@ -1,7 +1,6 @@
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.views import APIView
-from ...models import User
 import logging
 from .serializers import (
     UserRegistrationSerializer,
@@ -11,7 +10,7 @@ from .serializers import (
 from django.contrib.auth import authenticate
 from ...jwt import get_tokens_for_user
 from rest_framework.permissions import IsAuthenticated
-from ...custom_response import CustomResponseMixin
+from ...custom_response import CustomResponseMixin, APIException
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +43,13 @@ class UserRegistrationView(CustomResponseMixin, APIView):
             return self.format_response(
                 'User registered successfully',
                 data, status_code=status.HTTP_201_CREATED)
+        except serializers.ValidationError as e:
+            return self.format_response(
+                'Failed to register user',
+                data={}, type='failure',
+                errors=e.detail,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             logger.error(f"User registration failed: {str(e)}")
             return self.format_response(
