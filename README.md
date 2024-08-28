@@ -1,4 +1,7 @@
 ## Social Networking APIs Overview
+#### Postman Collection :
+https://documenter.getpostman.com/view/33008464/2sAXjJ7DQF#0e34e4c4-96f4-488a-a89e-51cc4da155dc
+
 
 ### Setup
 
